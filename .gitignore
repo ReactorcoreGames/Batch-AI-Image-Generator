@@ -1,0 +1,53 @@
+# Secrets — NEVER commit. Keys are entered in the GUI and saved to
+# credentials.json beside the program; env vars are also read and win.
+# Patterns are deliberately broad: a key file has been added under a *.md name
+# with "key" (not "token") in it, which the narrower patterns missed.
+Cloudflare API token for img generation.txt
+Pollinations API key.md
+*token*.txt
+*token*.md
+*key*.txt
+*key*.md
+*secret*
+.env
+.env.*
+
+# Spike output — throwaway test images and logs
+spike/out/
+spike/control.py
+spike/verify_detect.py
+
+# Saved API keys entered through the GUI. NEVER commit.
+credentials.json
+
+# Per-user GUI state — written on every change, not shared
+config.json
+
+# The one-off prompt box persists here, beside the program. User text.
+single_custom.txt
+# Each one-off run materialises its prompt as a real .txt in the output folder.
+.oneoff/
+
+__pycache__/
+*.pyc
+
+# Batch output — generated images, sidecars and job databases
+out/
+*.batchgen.db*
+
+# Release build output — regenerate with build_release.bat
+dist/
+build/
+*.spec
+
+# Superseded development artifacts: session plans, the original spec draft,
+# the spike, and past test batches. Kept locally for reference, not shipped.
+old wip/
+
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batch AI Image Generator — Advanced Usage</title>
+<style>
+/* Palette from gui/theme.py — the app's own teal/cyan. Dark is the app's real
+   scheme; light is a derived daylight/print variant of the same hues. */
+:root{
+  --bg:#F2F8F8; --surface:#FFFFFF; --surface-2:#E6F1F1; --input:#F7FCFC;
+  --text:#0F2C2B; --text-2:#3E6462; --muted:#6A8A88;
+  --accent:#0B6570; --accent-mid:#0E7C88; --accent-soft:#0B6570; --rule:#C7E0E0;
+  --ok:#1B7A4F; --warn:#8A5B00; --danger:#A32020;
+  --warn-bg:#FDF4DE; --danger-bg:#FCECEC; --ok-bg:#E7F5EE; --accent-bg:#E4F3F5;
+  --shadow:0 1px 2px rgba(15,44,43,.07), 0 3px 12px rgba(15,44,43,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0D2E2D; --surface:#14403F; --surface-2:#123837; --input:#0A2422;
+    --text:#E8F6F6; --text-2:#A9CFCE; --muted:#8FB2B0;
+    --accent:#7FE3EC; --accent-mid:#31C6D4; --accent-soft:#1B9AAA; --rule:#1E5C5A;
+    --ok:#4CC38A; --warn:#FFC94D; --danger:#FF6B6B;
+    --warn-bg:#33301A; --danger-bg:#361E1E; --ok-bg:#123A2C; --accent-bg:#0F3D40;
+    --shadow:0 1px 2px rgba(0,0,0,.25), 0 3px 12px rgba(0,0,0,.2);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:15px/1.62 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+}
+.wrap{max-width:1560px; margin:0 auto; padding:0 30px 64px}
+
+/* Two-column shell: sticky index on the left, content on the right. Below
+   1000px the index falls back to a normal block above the content. */
+.shell{display:block}
+@media (min-width:1000px){
+  .shell{display:grid; grid-template-columns:236px minmax(0,1fr); gap:0 40px; align-items:start}
+}
+
+/* ── Masthead ───────────────────────────────────────────── */
+/* Title left, a cropped band of the cover art right. The source is a
+   1024x1024 square, so object-fit crops it rather than letting it set the
+   header's height -- a full-bleed strip ate a third of the first screen. */
+header{padding:22px 0 20px; border-bottom:2px solid var(--rule); margin-bottom:24px}
+.masthead{display:grid; gap:14px 26px; align-items:center; grid-template-columns:1fr}
+@media (min-width:860px){ .masthead{grid-template-columns:minmax(0,1fr) 380px} }
+@media (min-width:1200px){ .masthead{grid-template-columns:minmax(0,1fr) 470px} }
+.masthead .art{
+  width:100%; height:136px; display:block; border-radius:10px;
+  object-fit:cover; object-position:center 46%;
+  border:1px solid var(--rule); box-shadow:var(--shadow);
+}
+@media (min-width:1200px){ .masthead .art{height:154px} }
+.eyebrow{
+  font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--accent-mid); margin:0 0 10px;
+}
+h1{font-size:clamp(26px,3.1vw,36px); line-height:1.13; margin:0 0 10px; font-weight:800; letter-spacing:-.02em}
+.lede{font-size:17px; color:var(--text-2); margin:0; max-width:66ch}
+.lede strong{color:var(--text)}
+
+/* ── Sections ───────────────────────────────────────────── */
+section{margin:0 0 42px; scroll-margin-top:16px}
+h2{
+  font-size:18px; font-weight:700; margin:0; letter-spacing:-.01em;
+  display:flex; align-items:center; gap:11px; flex-wrap:wrap;
+}
+.step-n{
+  flex:0 0 auto; width:28px; height:28px; border-radius:50%;
+  background:var(--accent-soft); color:#FFFFFF;
+  font-size:14px; font-weight:700; display:inline-flex;
+  align-items:center; justify-content:center;
+}
+@media (prefers-color-scheme: dark){ .step-n{color:#062020} }
+h2 .sub{font-size:13px; font-weight:600; color:var(--muted); letter-spacing:.04em; text-transform:uppercase}
+h3{font-size:16px; font-weight:700; margin:26px 0 8px; color:var(--text)}
+.section-body{padding-left:0}
+p{margin:0 0 12px; max-width:74ch}
+a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px}
+
+/* ── Checklist items ────────────────────────────────────── */
+ul.check{list-style:none; padding:0; margin:14px 0}
+ul.check li{
+  position:relative; padding:9px 0 9px 34px; border-bottom:1px solid var(--rule);
+}
+ul.check li:last-child{border-bottom:0}
+ul.check li::before{
+  content:""; position:absolute; left:0; top:14px;
+  width:17px; height:17px; border:2px solid var(--accent-soft);
+  border-radius:4px; background:var(--input);
+}
+ul.plain{margin:10px 0; padding-left:22px}
+ul.plain li{margin:0 0 7px; max-width:72ch}
+
+/* ── Cards / callouts ───────────────────────────────────── */
+.card{
+  background:var(--surface); border:1px solid var(--rule); border-radius:9px;
+  padding:16px 19px; margin:16px 0; box-shadow:var(--shadow);
+}
+.note{border-left:4px solid var(--accent-mid); background:var(--accent-bg)}
+.warn{border-left:4px solid var(--warn); background:var(--warn-bg)}
+.danger{border-left:4px solid var(--danger); background:var(--danger-bg)}
+.ok{border-left:4px solid var(--ok); background:var(--ok-bg)}
+.card .tag{
+  display:block; font-size:11.5px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; margin:0 0 6px;
+}
+.warn .tag{color:var(--warn)} .danger .tag{color:var(--danger)}
+.note .tag{color:var(--accent-mid)} .ok .tag{color:var(--ok)}
+.card p:last-child, .card ul:last-child, .card .tw:last-child{margin-bottom:0}
+
+/* ── Lane cards (the three billing lanes) ───────────────── */
+.lanes{display:grid; gap:14px; margin:18px 0}
+@media (min-width:760px){ .lanes{grid-template-columns:repeat(3,1fr)} }
+.lane{
+  background:var(--surface); border:1px solid var(--rule); border-radius:9px;
+  padding:15px 17px; box-shadow:var(--shadow); border-top:5px solid var(--rule);
+}
+.lane.l-free{border-top-color:var(--ok)}
+.lane.l-daily{border-top-color:var(--accent-mid)}
+.lane.l-paid{border-top-color:var(--warn)}
+.lane h4{
+  margin:0 0 3px; font-size:14px; font-weight:800;
+  letter-spacing:.05em; text-transform:uppercase;
+}
+.l-free h4{color:var(--ok)} .l-daily h4{color:var(--accent-mid)} .l-paid h4{color:var(--warn)}
+.lane .who{font-size:12.5px; color:var(--muted); margin:0 0 10px; font-weight:600}
+.lane p{font-size:13.5px; margin:0 0 9px; color:var(--text-2)}
+.lane p:last-child{margin-bottom:0}
+.lane .big{font-size:15px; color:var(--text); font-weight:700}
+
+/* ── Tables ─────────────────────────────────────────────── */
+.tw{overflow-x:auto; margin:16px 0; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; min-width:520px; font-size:14px}
+caption{
+  caption-side:top; text-align:left; font-size:12px; font-weight:700;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+  padding:0 0 7px;
+}
+th,td{padding:8px 12px; text-align:left; border-bottom:1px solid var(--rule); vertical-align:top}
+thead th{
+  background:var(--surface-2); font-size:12px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--text-2);
+  border-bottom:2px solid var(--rule);
+}
+tbody tr:last-child td{border-bottom:0}
+td.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+tr.pick td{background:var(--accent-bg)}
+tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--accent-mid)}
+
+.marker{
+  font-family:Consolas, "Courier New", monospace; font-weight:700;
+  color:var(--accent); white-space:nowrap;
+}
+.free-pill{
+  display:inline-block; font-size:11px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ok); background:var(--ok-bg);
+  border:1px solid var(--ok); border-radius:20px; padding:1px 9px; white-space:nowrap;
+}
+code{
+  font-family:Consolas, "Courier New", monospace; font-size:13.5px;
+  background:var(--input); border:1px solid var(--rule); border-radius:4px;
+  padding:1px 5px;
+}
+pre{
+  background:var(--input); border:1px solid var(--rule); border-radius:7px;
+  padding:13px 15px; overflow-x:auto; margin:12px 0;
+  font-family:Consolas, "Courier New", monospace; font-size:13.5px; line-height:1.55;
+}
+pre code{background:none; border:0; padding:0; font-size:inherit}
+
+/* ── Path strip ─────────────────────────────────────────── */
+.path{
+  display:flex; flex-wrap:wrap; align-items:center; gap:9px;
+  background:var(--surface); border:1px solid var(--rule);
+  border-left:4px solid var(--accent-mid);
+  border-radius:9px; padding:14px 17px; margin:18px 0; box-shadow:var(--shadow);
+}
+.path .p-step{font-weight:700; font-size:14.5px}
+.path .p-arrow{color:var(--muted); font-weight:700}
+.path .p-note{flex-basis:100%; font-size:13px; color:var(--text-2); margin:2px 0 0; max-width:none}
+
+/* ── Index ──────────────────────────────────────────────── */
+nav.toc{
+  background:var(--surface); border:1px solid var(--rule); border-radius:9px;
+  padding:15px 17px; margin:0 0 28px; box-shadow:var(--shadow);
+}
+@media (min-width:1000px){
+  /* Follows the reader down the page. max-height + scroll so a short viewport
+     never hides the lower entries. */
+  nav.toc{position:sticky; top:18px; margin:0; max-height:calc(100vh - 36px); overflow-y:auto}
+}
+nav.toc h2{font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 9px; display:block}
+nav.toc ol{margin:0; padding-left:19px; font-size:14px}
+@media (max-width:999px){ nav.toc ol{columns:2; column-gap:30px} }
+@media (max-width:620px){ nav.toc ol{columns:1} }
+nav.toc li{margin:0 0 6px; break-inside:avoid}
+nav.toc a{font-weight:600; text-decoration:none}
+nav.toc a:hover{text-decoration:underline}
+nav.toc .fast{
+  margin:12px 0 0; padding-top:11px; border-top:1px solid var(--rule);
+  font-size:13px; color:var(--text-2);
+}
+nav.toc .expand{
+  margin:10px 0 0; padding-top:10px; border-top:1px solid var(--rule);
+  font-size:12.5px;
+}
+
+/* ── Collapsible sections ───────────────────────────────── */
+details.sec{
+  border:1px solid var(--rule); border-radius:10px; background:var(--surface);
+  margin:0 0 14px; box-shadow:var(--shadow); scroll-margin-top:18px;
+}
+details.sec > summary{
+  list-style:none; cursor:pointer; padding:13px 17px;
+  display:flex; align-items:center; gap:12px; border-radius:10px;
+}
+details.sec > summary::-webkit-details-marker{display:none}
+details.sec[open] > summary{border-bottom:1px solid var(--rule); border-radius:10px 10px 0 0}
+details.sec > summary:hover{background:var(--surface-2)}
+details.sec > summary .chev{
+  margin-left:auto; flex:0 0 auto; color:var(--muted); font-size:12px;
+  transition:transform .15s ease;
+}
+details.sec[open] > summary .chev{transform:rotate(180deg)}
+details.sec .sec-body{padding:6px 20px 18px}
+
+/* ── Screenshots ────────────────────────────────────────── */
+.shots{display:grid; gap:12px; margin:14px 0}
+@media (min-width:600px){ .shots{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:1180px){ .shots.four{grid-template-columns:repeat(4,1fr)} }
+figure.shot{margin:0}
+figure.shot img{
+  width:100%; height:auto; display:block; cursor:zoom-in;
+  border:1px solid var(--rule); border-radius:7px; background:var(--input);
+}
+figure.shot figcaption{
+  font-size:12.5px; color:var(--muted); margin-top:5px; font-weight:600;
+}
+/* CSS-only lightbox (:target). No JavaScript, so the page stays inert and
+   opens correctly from a file:// path with no network and no scripting. */
+.lb{
+  position:fixed; inset:0; z-index:50; display:none;
+  background:rgba(0,0,0,.86); padding:3vh 3vw;
+  align-items:center; justify-content:center; flex-direction:column;
+  text-decoration:none;
+}
+.lb:target{display:flex}
+.lb img{
+  max-width:94vw; max-height:84vh; border-radius:7px; background:var(--input);
+  box-shadow:0 8px 40px rgba(0,0,0,.6);
+}
+.lb .lb-cap{
+  color:#fff; font-size:13.5px; text-align:center; padding:11px 6px 0;
+  max-width:80ch; text-shadow:0 1px 3px rgba(0,0,0,.9);
+}
+.lb .lb-cap::after{
+  content:" — click anywhere to close"; color:#B9D6D5; font-size:12.5px;
+}
+
+/* ── Reference link grid ────────────────────────────────── */
+.links{display:grid; gap:12px; margin:16px 0}
+@media (min-width:700px){ .links{grid-template-columns:repeat(2,1fr)} }
+a.link-card{
+  display:block; text-decoration:none; color:inherit;
+  background:var(--surface); border:1px solid var(--rule);
+  border-left:4px solid var(--accent-mid); border-radius:9px;
+  padding:13px 16px; box-shadow:var(--shadow);
+}
+a.link-card:hover{border-left-color:var(--accent)}
+a.link-card b{display:block; font-size:14.5px; color:var(--accent); margin-bottom:3px}
+a.link-card span{font-size:13px; color:var(--text-2)}
+
+footer{
+  border-top:2px solid var(--rule); margin-top:50px; padding-top:22px;
+  font-size:13px; color:var(--muted);
+}
+footer a{color:var(--accent)}
+.stamp{font-size:12px; color:var(--muted); margin-top:8px}
+
+/* ── Print ──────────────────────────────────────────────── */
+@media print{
+  :root{
+    --bg:#fff; --surface:#fff; --surface-2:#f2f2f2; --input:#fafafa;
+    --text:#000; --text-2:#333; --muted:#555; --rule:#bbb;
+    --accent:#0A5A63; --accent-mid:#0A5A63; --accent-soft:#0A5A63;
+    --ok:#1B5E3F; --warn:#6B4700; --danger:#8A1A1A;
+    --warn-bg:#fff; --danger-bg:#fff; --ok-bg:#fff; --accent-bg:#f4f4f4;
+    --shadow:none;
+  }
+  body{font-size:10.5pt}
+  .wrap{max-width:none; padding:0}
+  section{break-inside:avoid; margin-bottom:22px}
+  .card,.lane,.path,table,pre{break-inside:avoid}
+  .lanes{grid-template-columns:repeat(3,1fr)}
+  .step-n{border:1.5pt solid #000; background:#fff; color:#000}
+  ul.check li::before{border-color:#000}
+  a{color:#000; text-decoration:none}
+  a[href^="http"]::after{content:" (" attr(href) ")"; font-size:8.5pt; color:#555; word-break:break-all}
+  .tw{overflow:visible}
+  table{min-width:0}
+  header{padding-top:0}
+  .section-body{padding-left:0}
+  /* The overlays are duplicates of the inline figures; printing them would
+     add six full-page images to the end of the document. */
+  .lb{display:none !important}
+  nav.toc{break-inside:avoid; position:static; max-height:none; overflow:visible}
+  nav.toc a{color:#000}
+  nav.toc .expand{display:none}
+  .shell{display:block}
+  /* Print every section regardless of what the reader collapsed on screen. */
+  details.sec{border-color:#bbb; break-inside:auto}
+  details.sec > summary{padding:6px 0; border-bottom:1pt solid #bbb}
+  details.sec > summary .chev{display:none}
+  details.sec .sec-body{padding:8px 0 6px}
+  .masthead{grid-template-columns:1fr 2.2in; gap:10px 18px}
+  .masthead .art{height:.8in}
+  figure.shot img{border-color:#999}
+  a.link-card{border-left-color:#000}
+  a.link-card b{color:#000}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="masthead">
+    <div>
+      <p class="eyebrow">Batch AI Image Generator</p>
+      <h1>Advanced usage</h1>
+      <p class="lede">The long version: every setup step, the three genuinely different ways a model is paid for, and the traps that cost real money. <strong>Read this before selecting any model with a <code>$</code> marker.</strong></p>
+    </div>
+    <img class="art" src="assets/icon og (2).jpg" alt="Batch AI Image Generator">
+  </div>
+</header>
+
+<div class="shell">
+
+<nav class="toc">
+  <h2>On this page</h2>
+  <ol>
+    <li><a href="#s1">Install and run</a></li>
+    <li><a href="#s2">Which models cost nothing</a></li>
+    <li><a href="#s3">Your two Cloudflare values</a></li>
+    <li><a href="#s4">Writing your prompt file</a></li>
+    <li><a href="#s5">Running your first batch</a></li>
+    <li><a href="#s6">The paid lanes, and loading credit</a></li>
+    <li><a href="#s7">Before you spend anything</a></li>
+    <li><a href="#links">Links you will want again</a></li>
+  </ol>
+  <p class="fast">In a hurry? <b><a href="1 first time setup tutorial.html">Page 1 — first-time setup</a></b> is the one-screen version that gets you generating on the free models, with no billing and no arithmetic.</p>
+  <p class="expand">Sections collapse — click any heading. <a href="#" id="toggle-all">Expand / collapse all</a></p>
+</nav>
+
+<main>
+
+<!-- ══ 1 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s1" open>
+  <summary><h2><span class="step-n">1</span> Install and run</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <ul class="check">
+      <li>Unzip the download somewhere you can find again — <b>your Documents folder is fine; Program Files is not needed.</b></li>
+      <li>Double-click <code>Batch AI Image Generator.exe</code>. There is no installer, and Python is not required.</li>
+      <li>Keep <code>guide.md</code> and <code>assets/icon.ico</code> beside the exe — the <b>Help</b> button and the window icon look for them there.</li>
+      <li>Leave the <code>_internal/</code> folder alone. Moving or deleting it stops the program running.</li>
+    </ul>
+    <p>Windows 10 or 11 and an internet connection. Nothing else.</p>
+  </div>
+</details>
+
+<!-- ══ 2 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s2" open>
+  <summary><h2><span class="step-n">2</span> Know which models cost nothing <span class="sub">read this before anything else</span></h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <p><strong>Five models bill nothing, ever.</strong> Not a trial, not a free tier that runs out — on Cloudflare's pricing they simply do not bill. Fifteen test images across the three Cloudflare ones billed zero.</p>
+
+    <div class="tw">
+    <table>
+      <caption>The models that never cost anything</caption>
+      <thead><tr><th>Model</th><th>Provider</th><th>Needs a key?</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr class="pick"><td><b>SDXL Lightning</b></td><td>Cloudflare</td><td>Account ID + token</td><td><b>The default.</b> Fastest — about 2–3 s per image.</td></tr>
+        <tr><td><b>SDXL Base 1.0</b></td><td>Cloudflare</td><td>Account ID + token</td><td>Slower, more refinement passes, sometimes more detail.</td></tr>
+        <tr><td><b>DreamShaper 8 LCM</b></td><td>Cloudflare</td><td>Account ID + token</td><td>Fast, leans photographic.</td></tr>
+        <tr><td>DreamShaper 8 LCM</td><td>Pollinations</td><td><span class="free-pill">No key</span></td><td>Backup lane — see below.</td></tr>
+        <tr><td>FLUX.1 Schnell</td><td>Pollinations</td><td><span class="free-pill">No key</span></td><td>Backup lane — see below.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="card note">
+      <span class="tag">Start with the free Cloudflare models</span>
+      <p>They are faster and better than the Pollinations pair, and the Cloudflare signup is free, takes about three minutes and <b>never asks for a payment method</b>. That is step 3, and it is worth doing before your first batch.</p>
+    </div>
+
+    <div class="card">
+      <span class="tag">Pollinations — the zero-setup backup</span>
+      <p>If you want an image in the next ten seconds with no account at all, pick <b>Pollinations</b> on the Provider tab and skip to step 5. It works and it costs nothing.</p>
+      <p>But treat it as a fallback rather than your main lane. Pollinations allows <b>exactly one request at a time per IP address</b> — measured, and an API key does not lift it — which works out at roughly one image every 15–45 seconds. Fine for a handful, unusable for five hundred. Its images are also capped at about <b>1024×576</b>. Use it to try the program, then move to Cloudflare for real work.</p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ 3 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s3" open>
+  <summary><h2><span class="step-n">3</span> Get your two Cloudflare values <span class="sub">free · no card</span></h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <p><strong>You need two values, not one:</strong> an <b>Account ID</b> and an <b>API Token</b>. Both are free. This unlocks the three free Cloudflare models and the rest of the lineup.</p>
+
+    <ul class="check">
+      <li><b>Account ID</b> — log in at <a href="https://dash.cloudflare.com">dash.cloudflare.com</a>. It is a 32-character hex string in your dashboard URL, and on the right-hand side of most account pages. Copy it.</li>
+      <li><b>API Token</b> — go to <a href="https://dash.cloudflare.com/profile/api-tokens">dash.cloudflare.com/profile/api-tokens</a> → <b>Create Token</b> → use the <b>“Read all resources”</b> template → <b>Continue to summary</b> → <b>Create Token</b>.</li>
+      <li><b>Copy the token immediately.</b> Cloudflare shows it exactly once.</li>
+      <li>In the program: <b>Provider</b> tab → paste both into the <b>API Keys</b> box → <b>Save Keys</b> → <b>Check Credentials</b>.</li>
+    </ul>
+
+    <div class="shots">
+      <figure class="shot">
+        <a href="#shot-token-1"><img src="promo/!cloudflare info/MAIN - 1 - cloudflare API token guide (1).png" alt="Cloudflare dashboard: creating an API token, step 1"></a>
+        <figcaption>1 · Create Token → “Read all resources”</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="#shot-token-2"><img src="promo/!cloudflare info/MAIN - 2 - cloudflare API token guide (2).png" alt="Cloudflare dashboard: creating an API token, step 2"></a>
+        <figcaption>2 · Continue to summary → Create Token</figcaption>
+      </figure>
+    </div>
+
+    <div class="card note">
+      <span class="tag">Use the “Read all resources” template</span>
+      <p>Not the Workers AI one. A read-only token does everything this program needs — tested directly, not assumed. Generating an image is a <code>POST</code>, but it is <i>inference</i>: it creates no resource and changes no setting on your account. If the token ever leaks, nobody can alter anything you own with it.</p>
+    </div>
+
+    <div class="card warn">
+      <span class="tag">If you validate the token yourself</span>
+      <p>Check it against <code>/accounts/{account_id}/tokens/verify</code> — <b>not</b> <code>/user/tokens/verify</code>. The second returns <code>401</code> on a perfectly valid account token and will send you chasing a problem you do not have. The program's <b>Check Credentials</b> button already uses the right one.</p>
+    </div>
+
+    <div class="card">
+      <span class="tag">Where the keys live</span>
+      <p>Saved to <code>credentials.json</code> beside the program, restricted to your Windows user. Never written to <code>config.json</code>, the job database, or any image metadata. <b>Delete <code>credentials.json</code> and <code>config.json</code> before sharing this folder with anyone.</b></p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ 4 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s4" open>
+  <summary><h2><span class="step-n">4</span> Write your prompt file</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <p>A plain <code>.txt</code> file, <strong>one prompt per line</strong>. Blank lines are skipped. That is the entire format — three lines means three images.</p>
+<pre><code>a quiet forest clearing at dawn, mist between the trunks
+a coastal fishing village under heavy grey rain
+a desert highway at noon, heat shimmer over the asphalt</code></pre>
+    <p>Notepad is enough. <code>test_prompts.txt</code> in the download is a working example you can copy.</p>
+
+    <h3>The style suffix (optional, but do it)</h3>
+    <p>Rather than repeating your art direction on every line, write it once in the <b>Style Suffix</b> box and the program appends it to every prompt before sending. Dozens of presets ship in the dropdown, and the <b>Preview</b> panel shows exactly what will be sent. <code>test_style_prompt_addon.txt</code> is the example file.</p>
+
+    <div class="card warn">
+      <span class="tag">Prompt length differs by about 7× — and truncation is silent</span>
+      <p>Past a model's limit the end of your prompt is simply dropped. No error, no warning, and nothing in the picture to tell you. <b>The style suffix is what you lose, because it is appended last.</b></p>
+      <div class="tw">
+      <table>
+        <thead><tr><th>Model</th><th class="num">Comfortable length</th></tr></thead>
+        <tbody>
+          <tr><td>SDXL Lightning, SDXL Base, DreamShaper, Pollinations DreamShaper</td><td class="num"><b>~300 characters</b></td></tr>
+          <tr><td>P-Image, both Krea, both Recraft, both Nano Banana</td><td class="num">~800 characters</td></tr>
+          <tr><td>Pollinations FLUX.1 Schnell</td><td class="num">~1000 characters</td></tr>
+          <tr><td>FLUX.2 klein 4B / 9B, FLUX.2 pro Preview</td><td class="num"><b>~2000 characters</b></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>So a long, richly detailed prompt is worth writing for the FLUX models and largely wasted on the Stable Diffusion ones — they are not ignoring your detail, they are never shown it. The character counter under the editor grades your longest prompt plus the suffix against the model you picked. <b>Nothing in the program cuts your text</b>: the counter warns, it does not trim.</p>
+    </div>
+
+    <div class="card">
+      <span class="tag">One wording trap</span>
+      <p>The word <b>“blurry”</b> produces genuinely blurry images on the stronger models, because they follow instructions well. Say what you actually want: <i>soft focus</i>, <i>atmospheric haze</i>, <i>depth of field</i>. See <code>prompting.md</code>.</p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ 5 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s5" open>
+  <summary><h2><span class="step-n">5</span> Run your first batch</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <ul class="check">
+      <li><b>Provider</b> tab → pick <b>SDXL Lightning</b>. It is free, it is the default, and it is the fastest thing here.</li>
+      <li><b>Prompts &amp; Style</b> tab → <b>Choose Prompt File…</b> Start with five or ten lines, not five hundred.</li>
+      <li><b>Choose Output Folder…</b> — pick an empty folder. Images, sidecars, the log and the job database all land there.</li>
+      <li>Optionally pick a <b>Style Preset</b>, and check the <b>Preview</b> panel.</li>
+      <li><b>Run</b> tab → <b>Dry Run</b>. It lists every job, every filename and the total cost, with <b>zero API calls</b>. Do this every time.</li>
+      <li><b>Start Batch.</b> Watch the finished / failed / blocked counters.</li>
+    </ul>
+
+    <div class="card ok">
+      <span class="tag">What you get</span>
+      <p>Each image is saved as <code>promptfile-linenumber-first_few_words.jpg</code> (or <code>.png</code>), with a <code>.json</code> sidecar recording the original prompt, the final prompt, the model, seed, size, timestamp and estimated cost. Close the program mid-batch and restart later — finished images are skipped, not regenerated.</p>
+    </div>
+
+    <div class="card note">
+      <span class="tag">Testing a style without paying for the whole file</span>
+      <p>The <b>Generate</b> slider under the preview runs only the first N prompts. Load your real hundred-line file, pull it down to 5, look at the results, then slide back to <b>All</b> — the five already made are reused, not regenerated. A five-image test costs five images.</p>
+    </div>
+
+    <div class="card warn">
+      <span class="tag">Failed vs. blocked</span>
+      <p><b>Failed</b> is temporary — a timeout, a blip, a rate limit — and is retried automatically. <b>Blocked</b> means the content filter refused the prompt, which arrives as <code>HTTP 200 OK</code> and a <b>completely black image</b>. The program decodes every image and rejects a flat single colour as permanent, so blocked prompts are never retried. Rewrite the wording; retrying identical text gets the same refusal.</p>
+    </div>
+
+    <div class="card">
+      <span class="tag">Size, briefly</span>
+      <p><b>Standard</b> is the default and right for most batches. On the three Stable Diffusion models Standard 16:9 is <b>1024×576</b>, capped deliberately because those models are trained around 1024px and degrade above it — duplicated structures, drifting geometry, ugly edges. <b>High</b> goes bigger and warns you when it does. On klein 4B, Standard 16:9 is the full <b>1536×864</b>. The big figure under the dropdowns is always the size you will actually get.</p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ 6 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s6" open>
+  <summary><h2><span class="step-n">6</span> The paid lanes — and when they are worth it</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <p>Everything above costs nothing. Read on only when the free models are not giving you what you need. <strong>There are three genuinely different ways a model is paid for, and they are not interchangeable.</strong></p>
+
+    <div class="lanes">
+      <div class="lane l-free">
+        <h4>Free</h4>
+        <p class="who">3 Cloudflare SD models + both Pollinations</p>
+        <p class="big">Bills nothing, ever.</p>
+        <p>No cap, no allowance, no card. Measured at zero cost, not assumed.</p>
+      </div>
+      <div class="lane l-daily">
+        <h4>Free daily, then paid</h4>
+        <p class="who">FLUX.2 klein 4B and 9B</p>
+        <p class="big">Billed in Cloudflare <b>neurons</b> against a 10,000/day allowance.</p>
+        <p>A small batch costs nothing; a large one starts charging partway through. Resets at midnight UTC.</p>
+      </div>
+      <div class="lane l-paid">
+        <h4>Prepaid credit</h4>
+        <p class="who">The 8 AI Gateway models</p>
+        <p class="big">Charged from image one.</p>
+        <p>Not covered by the daily allowance at all. Nothing runs until you have topped up.</p>
+      </div>
+    </div>
+
+    <h3>Lane 2 — the klein models, and the 10× gap</h3>
+    <p>These draw on Cloudflare's free 10,000 neurons a day. The two models are <b>about ten times apart per image, not two</b>, despite what the names suggest — which is the main reason klein 4B is usually the better buy.</p>
+
+    <div class="tw">
+    <table>
+      <caption>Measured at 1536×864, Standard tier</caption>
+      <thead><tr><th>Model</th><th class="num">Neurons / image</th><th class="num">Free images/day <i>(est.)</i></th><th class="num">$ / 1000 after that</th></tr></thead>
+      <tbody>
+        <tr class="pick"><td><b>FLUX.2 klein 4B</b> <span class="marker">$</span></td><td class="num">131.88</td><td class="num"><b>~75</b></td><td class="num">$1.72</td></tr>
+        <tr><td>FLUX.2 klein 9B <span class="marker">$$</span></td><td class="num">1411.92</td><td class="num"><b>~7</b></td><td class="num">$16.94</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="card warn">
+      <span class="tag">Those per-day figures are estimates, not guarantees</span>
+      <p>They are honest arithmetic on a <b>measured</b> neuron rate — read from Cloudflare's own usage API on <b>2026-09-06</b>, not derived from the dollar price. But the allowance belongs to Cloudflare, and <b>one of these figures demonstrably moved on that very date</b>: an earlier measurement put klein 4B near 361 images a day. Treat them as “roughly this many, today”. The <b>Cost Calculator</b> on the Provider tab is the live figure for the size you actually chose, and Cloudflare's dashboard is the authority on what you have really used.</p>
+    </div>
+
+    <h3>Lane 3 — the AI Gateway models, and loading credit</h3>
+    <p>Same Cloudflare account, same API token, completely different money. <strong>You must load credit before any of these will run</strong> — until then they refuse the request and the program reports the batch as out of quota.</p>
+
+    <div class="card danger">
+      <span class="tag">Three things that surprise people</span>
+      <ul class="plain">
+        <li><b>Card only.</b> PayPal appears as an option but is <b>not accepted</b> — a PayPal-only account is turned away after you have gone through the whole flow.</li>
+        <li><b>The minimum top-up is $10.</b> The field accepts $10 to $50. Not $5, not an arbitrary amount.</li>
+        <li><b>There is a 5% purchase fee on top.</b> $10 of credit costs <b>$10.50</b>; $100 costs $105. That is Cloudflare's fee, not this program's.</li>
+      </ul>
+    </div>
+
+    <div class="shots four">
+      <figure class="shot">
+        <a href="#shot-credit-1"><img src="promo/!cloudflare info/PREPAID - 1 - ai gateway.png" alt="Cloudflare dashboard: the AI Gateway section"></a>
+        <figcaption>1 · AI → AI Gateway</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="#shot-credit-2"><img src="promo/!cloudflare info/PREPAID - 2 - credit page before payment method.png" alt="The credits page before a payment method has been added"></a>
+        <figcaption>2 · The credits page with no card added yet</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="#shot-credit-3"><img src="promo/!cloudflare info/PREPAID - 3 - adding payment methods.png" alt="Adding a payment method in Cloudflare billing"></a>
+        <figcaption>3 · Adding a card — do this one first</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="#shot-credit-4"><img src="promo/!cloudflare info/PREPAID - 4 - credits paying.png" alt="Buying AI Gateway credits, showing the amount and the fee"></a>
+        <figcaption>4 · Buying credit — note the 5% fee</figcaption>
+      </figure>
+    </div>
+
+    <p><b>Do it in this order.</b> Going to the credits page first is what makes this confusing: it sends you away to add a card and then back again, and people end up bouncing between pages.</p>
+    <ul class="check">
+      <li><b>Add your card first</b> — <a href="https://dash.cloudflare.com/?to=/:account/billing">open Billing</a> and add a credit or debit card. Do this before you go anywhere near the credits page.</li>
+      <li>Then <b>open the credits page</b> — <a href="https://dash.cloudflare.com/?to=/:account/ai/ai-gateway/credits">AI → AI Gateway → Credits</a>, or use the <b>Check credits</b> link beside the model dropdown in the program.</li>
+      <li><b>Manage / Top-up credits</b> → enter an amount between $10 and $50.</li>
+      <li>Leave auto top-up off unless you want a standing charge on your card.</li>
+    </ul>
+
+    
+    <p>Credit does not expire, so the $10 minimum is a one-off that lasts: at $5 per 1000 on P-Image, that is 2000 images.</p>
+
+    <div class="tw">
+    <table>
+      <caption>The eight AI Gateway models — flat per image unless noted</caption>
+      <thead><tr><th>Model</th><th class="num">$ / 1000</th><th>Band</th><th>Worth it when…</th></tr></thead>
+      <tbody>
+        <tr><td><b>P-Image</b></td><td class="num">$5.00</td><td><span class="marker">$</span></td><td>You want cheap and very fast. Expands your prompt automatically. 16:9 is 1280×720.</td></tr>
+        <tr class="pick"><td><b>Krea 2 Medium Turbo</b></td><td class="num">$15.00</td><td><span class="marker">$$</span></td><td>Anime, painting, illustration. <b>The best of the expensive models for the money.</b> One fixed size.</td></tr>
+        <tr><td>Krea 2 Medium</td><td class="num">$30.00</td><td><span class="marker">$$$</span></td><td>Every image in a batch must look consistent. Otherwise pick Turbo.</td></tr>
+        <tr><td>FLUX.2 pro Preview</td><td class="num">$30.00</td><td><span class="marker">$$$</span></td><td>You need its adjustable content filter. Krea Turbo looks better for half the price.</td></tr>
+        <tr><td>Recraft V4.1 Utility</td><td class="num">$35.00</td><td><span class="marker">$$$</span></td><td>Solid all-rounder, the better of the two Recrafts. No seed. 16:9 is 1344×768.</td></tr>
+        <tr><td>Recraft V4.1</td><td class="num">$35.00</td><td><span class="marker">$$$</span></td><td>Art direction, composition, readable text in the image. No seed.</td></tr>
+        <tr><td>Nano Banana 2 Lite</td><td class="num">$34.00</td><td><span class="marker">$$$</span></td><td>Best quality per dollar of the expensive options. One fixed size. No seed.</td></tr>
+        <tr><td>Nano Banana 2</td><td class="num">$67 / $101 / $151</td><td><span class="marker">$$$$</span></td><td>The best quality here and by far the dearest. <b>The tier changes the bill</b> — Draft / Standard / High. A few special images, not a batch. No seed.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>What the markers mean</h3>
+    <div class="tw">
+    <table>
+      <thead><tr><th>Marker</th><th>Band</th><th class="num">$ per 1000 images</th></tr></thead>
+      <tbody>
+        <tr><td><i>(none)</i></td><td><b>FREE</b></td><td class="num">Nothing</td></tr>
+        <tr><td><span class="marker">$</span></td><td><b>LOW COST</b></td><td class="num">Up to $5</td></tr>
+        <tr><td><span class="marker">$$</span></td><td><b>MEDIUM COST</b></td><td class="num">$5 to $20</td></tr>
+        <tr><td><span class="marker">$$$</span></td><td><b>HIGH COST</b></td><td class="num">$20 to $50</td></tr>
+        <tr><td><span class="marker">$$$$</span></td><td><b>EXTREME COST</b></td><td class="num">Over $50</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The marker is a browsing aid graded at a fixed reference size. The <b>Cost Calculator</b> is the real number and grades the size you actually picked — which matters on Nano Banana 2, where the tier can move the model between bands.</p>
+  </div>
+</details>
+
+<!-- ══ 7 ══════════════════════════════════════════════════ -->
+<details class="sec" id="s7" open>
+  <summary><h2><span class="step-n">!</span> Before you spend anything <span class="sub">the ones that cost real money</span></h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="card danger">
+      <span class="tag">A refused prompt on a paid model is still generated and billed</span>
+      <p>A blocked prompt is a <i>well-formed</i> request. It gets generated, billed, and handed back as a <b>black frame</b> reporting success. Cloudflare also runs a check over the finished <b>image</b>, not just your text, so an ordinary prompt can be flagged on the strength of a frame you never see — military, weapon and combat subjects draw more of these than most.</p>
+      <p>On a batch this compounds: five hundred prompts sharing one style suffix that trips the filter means five hundred billed refusals, and because each is marked <i>blocked</i> rather than <i>failed</i>, the run finishes and reports itself clean.</p>
+      <p><b>So: test new prompt wording on a free model first.</b> SDXL Lightning uses the same content filter and costs nothing to be refused by. Then use the Generate slider to run the first five before committing the other 495.</p>
+    </div>
+
+    <div class="card danger">
+      <span class="tag">A paid image is attempted once and never retried — on purpose</span>
+      <p>On a paid model the image is generated and billed <i>before</i> the response arrives, so a retry is a <b>new charge, not a recovery</b>. The program tries once and fails permanently rather than quietly buying four copies of one image. Free models get three attempts.</p>
+      <p>Two deliberate exceptions: a <code>429</code> rate limit is refused before anything is generated, so it costs nothing and backs off normally; and a download that fails <i>after</i> the image was made is retried, because it is already paid for and retrying is the only way to get it.</p>
+    </div>
+
+    <div class="card warn">
+      <span class="tag">Recraft is the one family that bills a bad request</span>
+      <p>On twelve of the thirteen Cloudflare models a malformed request is refused before anything is generated and costs nothing. Both Recraft models accept it, bill it, and <i>then</i> fail. The program only ever sends sizes from Recraft's own published list and validates them before the batch starts, so you should not be able to trigger this — but it is why <b>Dry Run</b> exists.</p>
+    </div>
+
+    <div class="card note">
+      <span class="tag">Use Dry Run. Every time.</span>
+      <p>It lists the whole batch, validates every setting against the model you picked, shows the total cost, and makes <b>zero API calls</b>. It is specifically designed to catch the mistakes that would otherwise be expensive.</p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ Path ═══════════════════════════════════════════════ -->
+<details class="sec" id="path" open>
+  <summary><h2><span class="step-n">→</span> The recommended path</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <div class="path">
+      <span class="p-step">Free Cloudflare SD models</span>
+      <span class="p-arrow">→</span>
+      <span class="p-step">klein 4B</span>
+      <span class="p-arrow">→</span>
+      <span class="p-step">paid, only if you still need to</span>
+      <p class="p-note">Prove your prompts and your style suffix on the free models, where a refusal costs nothing. <b>klein 4B is the honest “start here after the free ones” pick</b> — a large jump in quality, roughly 75 images a day free, and under a fifth of a cent each after that. Most people never need to go further. If you do, Krea 2 Medium Turbo is the best of the expensive models for the money.</p>
+    </div>
+  </div>
+</details>
+
+<!-- ══ Links ══════════════════════════════════════════════ -->
+<details class="sec" id="links" open>
+  <summary><h2><span class="step-n">↗</span> Links you will want again</h2><span class="chev">▾</span></summary>
+  <div class="sec-body">
+    <p>These are the pages worth bookmarking once you are up and running — for checking what you have used, what you have left, and for replacing a token you have lost. Each one opens against <b>your own</b> Cloudflare account.</p>
+    <div class="links">
+      <a class="link-card" href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai">
+        <b>Workers AI usage</b>
+        <span>Your real neuron usage against the free 10,000/day — the authority on what the klein models have actually cost you. The program's figure is an estimate; this is the measurement.</span>
+      </a>
+      <a class="link-card" href="https://dash.cloudflare.com/?to=/:account/ai/ai-gateway/credits">
+        <b>AI Gateway credits</b>
+        <span>Your prepaid balance, and where you top it up. Only relevant to the eight gateway models.</span>
+      </a>
+      <a class="link-card" href="https://dash.cloudflare.com/profile/api-tokens">
+        <b>API tokens</b>
+        <span>Create, roll or revoke your token. Cloudflare shows a new token exactly once, so if you lost yours, create a fresh one here rather than hunting for it.</span>
+      </a>
+      <a class="link-card" href="https://dash.cloudflare.com/?to=/:account/billing">
+        <b>Billing</b>
+        <span>Your payment method and invoices. Add your card here <i>before</i> visiting the credits page.</span>
+      </a>
+    </div>
+    <p>Your <b>account ID</b> is the 32-character hex string in the address bar on any of these pages. In the program, the link beside the model dropdown goes to whichever of these matters for the model you have selected — usage for the free-allowance models, credits for the gateway ones.</p>
+  </div>
+</details>
+
+</main>
+</div><!-- /.shell -->
+
+<!-- CSS-only lightbox targets. Each is a full-screen overlay shown by :target
+     and dismissed by clicking it (the whole overlay is a link back to #). -->
+<a class="lb" id="shot-token-1" href="#s3"><img src="promo/!cloudflare info/MAIN - 1 - cloudflare API token guide (1).png" alt="Cloudflare dashboard: creating an API token, step 1"><span class="lb-cap">Create Token → “Read all resources” template</span></a>
+<a class="lb" id="shot-token-2" href="#s3"><img src="promo/!cloudflare info/MAIN - 2 - cloudflare API token guide (2).png" alt="Cloudflare dashboard: creating an API token, step 2"><span class="lb-cap">Continue to summary → Create Token, then copy it immediately</span></a>
+<a class="lb" id="shot-credit-1" href="#s6"><img src="promo/!cloudflare info/PREPAID - 1 - ai gateway.png" alt="Cloudflare dashboard: the AI Gateway section"><span class="lb-cap">AI → AI Gateway</span></a>
+<a class="lb" id="shot-credit-2" href="#s6"><img src="promo/!cloudflare info/PREPAID - 2 - credit page before payment method.png" alt="The credits page before a payment method has been added"><span class="lb-cap">The credits page before a card has been added</span></a>
+<a class="lb" id="shot-credit-3" href="#s6"><img src="promo/!cloudflare info/PREPAID - 3 - adding payment methods.png" alt="Adding a payment method in Cloudflare billing"><span class="lb-cap">Adding a card — a credit or debit card, not PayPal</span></a>
+<a class="lb" id="shot-credit-4" href="#s6"><img src="promo/!cloudflare info/PREPAID - 4 - credits paying.png" alt="Buying AI Gateway credits, showing the amount and the fee"><span class="lb-cap">Buying credit — $10 minimum, plus Cloudflare's 5% fee</span></a>
+
+<footer>
+  <p><b>Full reference:</b> <code>guide.md</code> — every setting, every model, troubleshooting. <b>Prompt writing:</b> <code>prompting.md</code>. <b>Copy-paste starting points:</b> <code>recipes.md</code>. The <b>Help</b> button in the program opens the guide.</p>
+  <p>Made by Reactorcore · <a href="https://reactorcore.itch.io">reactorcore.itch.io</a> · <a href="https://linktr.ee/reactorcore">linktr.ee/reactorcore</a></p>
+  <p class="stamp">Prices, sizes and neuron rates on this page are read from the program's own model registry (<code>core/models.py</code>). Neuron rates measured 2026-09-06; Cloudflare's card requirement, the $10–50 range and the 5% fee were confirmed on a real account the same day.</p>
+</footer>
+
+</div>
+
+<script>
+/* Two conveniences. Neither is required: with scripting off every section is
+   already open (they carry the `open` attribute) and every link still jumps. */
+(function () {
+  var secs = document.querySelectorAll('details.sec');
+
+  var t = document.getElementById('toggle-all');
+  if (t) t.addEventListener('click', function (e) {
+    e.preventDefault();
+    var anyClosed = false;
+    secs.forEach(function (d) { if (!d.open) anyClosed = true; });
+    secs.forEach(function (d) { d.open = anyClosed; });
+  });
+
+  /* An index link into a COLLAPSED section would scroll to a heading with
+     nothing under it, which reads as a broken link. Open the target first. */
+  function openTarget() {
+    var el = location.hash && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === 'DETAILS') el.open = true;
+  }
+  window.addEventListener('hashchange', openTarget);
+  openTarget();
+
+  /* Printing a collapsed section would silently drop it from the paper copy,
+     and CSS cannot reveal a collapsed section. Open them all for the print,
+     then restore exactly what the reader had. */
+  if (window.matchMedia) {
+    var was = null;
+    window.addEventListener('beforeprint', function () {
+      was = Array.prototype.map.call(secs, function (d) { return d.open; });
+      secs.forEach(function (d) { d.open = true; });
+    });
+    window.addEventListener('afterprint', function () {
+      if (was) secs.forEach(function (d, i) { d.open = was[i]; });
+    });
+  }
+})();
+</script>
+</body>
+</html>
